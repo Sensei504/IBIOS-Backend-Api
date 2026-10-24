@@ -11,6 +11,23 @@ function parseStringArray(raw: string | undefined, fallback: string[]): string[]
   try { const parsed: unknown = JSON.parse(raw); if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed; } catch { /* comma-separated overrides */ }
   return raw.split(',').map((part) => part.trim()).filter(Boolean);
 }
+function normalizeHostname(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const candidate = value.trim();
+    return new URL(candidate.includes('://') ? candidate : `https://${candidate}`).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+const vercelAllowedHosts = [...new Set([
+  normalizeHostname(process.env.VERCEL_URL),
+  normalizeHostname(process.env.VERCEL_PROJECT_PRODUCTION_URL),
+  normalizeHostname(process.env.VERCEL_BRANCH_URL),
+].filter((host): host is string => Boolean(host)))];
+const defaultAllowedHosts = vercelAllowedHosts.length
+  ? vercelAllowedHosts
+  : ['localhost', '127.0.0.1', 'web', 'api'];
 const environment = process.env.IBIOS_ENVIRONMENT ?? 'development';
 const secret = process.env.IBIOS_SECRET_KEY ?? '';
 if (environment === 'production' && (secret.length < 48 || /development|local-only|change-before-deploy|example/i.test(secret))) throw new Error('IBIOS_SECRET_KEY must be a unique random secret of at least 48 characters in production.');
@@ -27,7 +44,7 @@ export const config = {
   cookieSecure: (process.env.IBIOS_COOKIE_SECURE ?? (environment === 'production' ? 'true' : 'false')) === 'true',
   cookieSameSite: (process.env.IBIOS_COOKIE_SAMESITE ?? 'lax') as 'lax' | 'strict' | 'none',
   corsOrigins: parseStringArray(process.env.IBIOS_CORS_ORIGINS, ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173']),
-  allowedHosts: parseStringArray(process.env.IBIOS_ALLOWED_HOSTS, ['localhost', '127.0.0.1', 'web', 'api']),
+  allowedHosts: parseStringArray(process.env.IBIOS_ALLOWED_HOSTS, defaultAllowedHosts),
   upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL?.trim() ?? '', upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ?? '',
   redisUrl: process.env.IBIOS_RATE_LIMIT_STORAGE_URI?.trim() || process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim() || '',
   trustProxy: (process.env.IBIOS_TRUST_PROXY_HEADERS ?? 'false') === 'true', logLevel: logLevelParsed.data, apiPrefix: '/api/v1', refreshCookieName: 'ibios_refresh',
