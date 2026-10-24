@@ -8,6 +8,7 @@ This repository includes static source and unit/schema tests. The GitHub uploade
 - `npm test`
 - `npm run db:push` against a disposable PostgreSQL test database
 - `npm run build`
+- Registration schema checks ensure public sign-up accepts only student/faculty roles and rejects privileged or extra fields.
 
 ## Deployment acceptance still required
 A successful production build, live PostgreSQL and Redis/Upstash integration, session refresh/revocation tests, admin/super-admin permission tests, migration/backup-restore rehearsal, vulnerability scanning, HTTPS configuration, audit log review, load testing, and institutional privacy/security approval. Do not treat static source review as a production certification.
