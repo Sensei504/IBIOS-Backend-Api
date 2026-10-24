@@ -65,13 +65,24 @@ const logLevel = logLevelParsed.success ? logLevelParsed.data : 'info';
 if (!portParsed.success) startupConfigurationIssues.push('IBIOS_API_PORT is invalid; the default port is being used.');
 if (!logLevelParsed.success) startupConfigurationIssues.push('IBIOS_LOG_LEVEL is invalid; the info level is being used.');
 
+// The primary production frontend is trusted even when the Vercel environment variable
+// is missing or was configured without the live Netlify deployment origin.
+const primaryProductionFrontendOrigin = 'https://ibios-metro-dagupan-collages.netlify.app';
 const rawCorsOrigins = parseStringArray(
   process.env.IBIOS_CORS_ORIGINS,
-  isProduction ? [] : ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  isProduction
+    ? [primaryProductionFrontendOrigin]
+    : ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173'],
 );
-const corsOrigins = rawCorsOrigins.map(normalizeOrigin).filter((origin): origin is string => Boolean(origin));
-if (isProduction && (!process.env.IBIOS_CORS_ORIGINS?.trim() || corsOrigins.length !== rawCorsOrigins.length)) {
-  startupConfigurationIssues.push('IBIOS_CORS_ORIGINS must contain the exact HTTPS frontend origin(s). Cross-origin browser requests will be denied until configured.');
+const normalizedCorsOrigins = rawCorsOrigins
+  .map(normalizeOrigin)
+  .filter((origin): origin is string => Boolean(origin));
+const corsOrigins = [...new Set([
+  ...normalizedCorsOrigins,
+  ...(isProduction ? [primaryProductionFrontendOrigin] : []),
+])];
+if (isProduction && process.env.IBIOS_CORS_ORIGINS?.trim() && normalizedCorsOrigins.length !== rawCorsOrigins.length) {
+  startupConfigurationIssues.push('IBIOS_CORS_ORIGINS contains an invalid origin; invalid entries were ignored.');
 }
 
 const vercelAllowedHosts = [...new Set([
