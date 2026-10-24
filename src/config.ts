@@ -2,15 +2,23 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+
 const localEnvPath = resolve(process.cwd(), '.env');
 const exampleEnvPath = resolve(process.cwd(), '.env.example');
 if (existsSync(localEnvPath)) dotenv.config({ path: localEnvPath });
-else if (process.env.IBIOS_ENVIRONMENT !== 'production' && existsSync(exampleEnvPath)) dotenv.config({ path: exampleEnvPath });
+else if (process.env.VERCEL !== '1' && existsSync(exampleEnvPath)) dotenv.config({ path: exampleEnvPath });
+
 function parseStringArray(raw: string | undefined, fallback: string[]): string[] {
   if (!raw) return fallback;
-  try { const parsed: unknown = JSON.parse(raw); if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed; } catch { /* comma-separated overrides */ }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed;
+  } catch {
+    // Comma-separated values are also supported.
+  }
   return raw.split(',').map((part) => part.trim()).filter(Boolean);
 }
+
 function normalizeHostname(value: string | undefined): string | null {
   if (!value?.trim()) return null;
   try {
@@ -20,48 +28,139 @@ function normalizeHostname(value: string | undefined): string | null {
     return null;
   }
 }
+
+function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    if (url.origin === 'null' || url.username || url.password) return null;
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+const isVercelRuntime = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_URL);
+const environment = isVercelRuntime ? 'production' : (process.env.IBIOS_ENVIRONMENT ?? 'development');
+const isProduction = environment === 'production';
+const secret = process.env.IBIOS_SECRET_KEY?.trim() ?? '';
+const secretKeyConfigured = secret.length >= 48 && !/development|local-only|change-before-deploy|example/i.test(secret);
+const startupConfigurationIssues: string[] = [];
+
+if (isProduction && !secretKeyConfigured) {
+  startupConfigurationIssues.push('IBIOS_SECRET_KEY must be a unique random secret of at least 48 characters; authentication will be disabled until configured.');
+}
+
+const accessTokenParsed = z.coerce.number().int().min(1).max(60).safeParse(process.env.IBIOS_ACCESS_TOKEN_MINUTES ?? '15');
+const refreshTokenParsed = z.coerce.number().int().min(1).max(90).safeParse(process.env.IBIOS_REFRESH_TOKEN_DAYS ?? '14');
+if (!accessTokenParsed.success) startupConfigurationIssues.push('IBIOS_ACCESS_TOKEN_MINUTES must be between 1 and 60; the default is being used.');
+if (!refreshTokenParsed.success) startupConfigurationIssues.push('IBIOS_REFRESH_TOKEN_DAYS must be between 1 and 90; the default is being used.');
+
+const portParsed = z.coerce.number().int().min(1).max(65535).safeParse(process.env.IBIOS_API_PORT ?? '8000');
+const logLevelParsed = z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).safeParse(process.env.IBIOS_LOG_LEVEL?.toLowerCase() ?? 'info');
+const tokenMinutes = accessTokenParsed.success ? accessTokenParsed.data : 15;
+const refreshDays = refreshTokenParsed.success ? refreshTokenParsed.data : 14;
+const port = portParsed.success ? portParsed.data : 8000;
+const logLevel = logLevelParsed.success ? logLevelParsed.data : 'info';
+if (!portParsed.success) startupConfigurationIssues.push('IBIOS_API_PORT is invalid; the default port is being used.');
+if (!logLevelParsed.success) startupConfigurationIssues.push('IBIOS_LOG_LEVEL is invalid; the info level is being used.');
+
+const rawCorsOrigins = parseStringArray(
+  process.env.IBIOS_CORS_ORIGINS,
+  isProduction ? [] : ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+);
+const corsOrigins = rawCorsOrigins.map(normalizeOrigin).filter((origin): origin is string => Boolean(origin));
+if (isProduction && (!process.env.IBIOS_CORS_ORIGINS?.trim() || corsOrigins.length !== rawCorsOrigins.length)) {
+  startupConfigurationIssues.push('IBIOS_CORS_ORIGINS must contain the exact HTTPS frontend origin(s). Cross-origin browser requests will be denied until configured.');
+}
+
 const vercelAllowedHosts = [...new Set([
   normalizeHostname(process.env.VERCEL_URL),
   normalizeHostname(process.env.VERCEL_PROJECT_PRODUCTION_URL),
   normalizeHostname(process.env.VERCEL_BRANCH_URL),
 ].filter((host): host is string => Boolean(host)))];
-const defaultAllowedHosts = vercelAllowedHosts.length
-  ? vercelAllowedHosts
-  : ['localhost', '127.0.0.1', 'web', 'api'];
-const environment = process.env.IBIOS_ENVIRONMENT ?? 'development';
-const secret = process.env.IBIOS_SECRET_KEY ?? '';
-if (environment === 'production' && (secret.length < 48 || /development|local-only|change-before-deploy|example/i.test(secret))) throw new Error('IBIOS_SECRET_KEY must be a unique random secret of at least 48 characters in production.');
-const portParsed = z.coerce.number().int().min(1).max(65535).default(8000).safeParse(process.env.IBIOS_API_PORT ?? '8000');
-if (!portParsed.success) throw new Error('IBIOS_API_PORT must be a valid TCP port.');
-const logLevelParsed = z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info').safeParse(process.env.IBIOS_LOG_LEVEL?.toLowerCase() ?? 'info');
-if (!logLevelParsed.success) throw new Error('IBIOS_LOG_LEVEL must be fatal, error, warn, trace, or silent.');
+const rawAllowedHosts = parseStringArray(
+  process.env.IBIOS_ALLOWED_HOSTS,
+  vercelAllowedHosts.length ? vercelAllowedHosts : (isProduction ? ['ibios-backend-api.vercel.app'] : ['localhost', '127.0.0.1', 'web', 'api']),
+);
+let allowedHosts = rawAllowedHosts
+  .map((host) => normalizeHostname(host))
+  .filter((host): host is string => Boolean(host));
+if (isProduction) {
+  const filteredHosts = allowedHosts.filter((host) => !['localhost', '127.0.0.1'].includes(host) && host !== '*');
+  if (filteredHosts.length !== allowedHosts.length) startupConfigurationIssues.push('IBIOS_ALLOWED_HOSTS included a local or wildcard host, which has been removed.');
+  allowedHosts = filteredHosts;
+}
+if (!allowedHosts.length) {
+  allowedHosts = vercelAllowedHosts.length ? vercelAllowedHosts : (isProduction ? ['ibios-backend-api.vercel.app'] : ['localhost', '127.0.0.1']);
+  startupConfigurationIssues.push('IBIOS_ALLOWED_HOSTS was empty or invalid; a safe fallback hostname allowlist is being used.');
+}
+
+const databaseUrlFromEnv = process.env.DATABASE_URL?.trim() || process.env.IBIOS_DATABASE_URL?.trim() || '';
+if (isProduction && !databaseUrlFromEnv) startupConfigurationIssues.push('DATABASE_URL is not configured; database-backed API endpoints will return 503.');
+const databaseUrl = databaseUrlFromEnv || (isProduction ? '' : 'postgresql://ibios:ibios-local-dev-postgres-password@127.0.0.1:5432/ibios');
+const migrationDatabaseUrl = process.env.MIGRATIONS_DATABASE_URL?.trim() || '';
+
+const upstashRedisRestUrl = process.env.UPSTASH_REDIS_REST_URL?.trim() ?? '';
+const upstashRedisRestToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ?? '';
+const redisUrl = process.env.IBIOS_RATE_LIMIT_STORAGE_URI?.trim() || process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim() || '';
+const hasUpstashRest = Boolean(upstashRedisRestUrl && upstashRedisRestToken);
+const hasNativeRedisUrl = /^rediss?:\/\//i.test(redisUrl);
+if (Boolean(upstashRedisRestUrl) !== Boolean(upstashRedisRestToken)) {
+  startupConfigurationIssues.push('Set both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, or neither.');
+}
+if (upstashRedisRestUrl) {
+  try {
+    if (new URL(upstashRedisRestUrl).protocol !== 'https:') throw new Error('not https');
+  } catch {
+    startupConfigurationIssues.push('UPSTASH_REDIS_REST_URL must be a valid HTTPS URL.');
+  }
+}
+if (isProduction && !hasNativeRedisUrl && !hasUpstashRest) {
+  startupConfigurationIssues.push('Production requires REDIS_URL or both Upstash REST credentials; rate-limited authentication endpoints will return 503.');
+}
+
+const cookieSameSiteValue = process.env.IBIOS_COOKIE_SAMESITE ?? 'lax';
+const cookieSameSite = ['lax', 'strict', 'none'].includes(cookieSameSiteValue)
+  ? cookieSameSiteValue as 'lax' | 'strict' | 'none'
+  : 'lax';
+if (!['lax', 'strict', 'none'].includes(cookieSameSiteValue)) startupConfigurationIssues.push('IBIOS_COOKIE_SAMESITE is invalid; lax is being used.');
+const cookieSecure = isProduction || process.env.IBIOS_COOKIE_SECURE === 'true';
+if (isProduction && process.env.IBIOS_COOKIE_SECURE === 'false') {
+  startupConfigurationIssues.push('IBIOS_COOKIE_SECURE=false is ignored in production; secure cookies are enforced.');
+}
+if (cookieSameSite === 'none' && !cookieSecure) {
+  startupConfigurationIssues.push('SameSite=None requires secure cookies; lax is being used.');
+}
+
 export const config = {
-  environment, isProduction: environment === 'production', port: portParsed.data, host: process.env.IBIOS_API_HOST ?? '0.0.0.0',
-  databaseUrl: process.env.DATABASE_URL?.trim() || process.env.IBIOS_DATABASE_URL?.trim() || 'postgresql://ibios:ibios-local-dev-postgres-password@127.0.0.1:5432/ibios',
-  migrationDatabaseUrl: process.env.MIGRATIONS_DATABASE_URL?.trim() || '',
+  environment,
+  isProduction,
+  isVercelRuntime,
+  startupConfigurationIssues,
+  secretKeyConfigured,
+  databaseConfigured: Boolean(databaseUrlFromEnv),
+  redisConfigured: hasNativeRedisUrl || hasUpstashRest,
+  port,
+  host: process.env.IBIOS_API_HOST ?? '0.0.0.0',
+  databaseUrl,
+  migrationDatabaseUrl,
   secretKey: secret || 'local-development-secret-not-for-production-000000000000000000000000',
-  accessTokenMinutes: Number(process.env.IBIOS_ACCESS_TOKEN_MINUTES ?? 15), refreshTokenDays: Number(process.env.IBIOS_REFRESH_TOKEN_DAYS ?? 14),
-  cookieSecure: (process.env.IBIOS_COOKIE_SECURE ?? (environment === 'production' ? 'true' : 'false')) === 'true',
-  cookieSameSite: (process.env.IBIOS_COOKIE_SAMESITE ?? 'lax') as 'lax' | 'strict' | 'none',
-  corsOrigins: parseStringArray(process.env.IBIOS_CORS_ORIGINS, ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173']),
-  allowedHosts: parseStringArray(process.env.IBIOS_ALLOWED_HOSTS, defaultAllowedHosts),
-  upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL?.trim() ?? '', upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ?? '',
-  redisUrl: process.env.IBIOS_RATE_LIMIT_STORAGE_URI?.trim() || process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim() || '',
-  trustProxy: (process.env.IBIOS_TRUST_PROXY_HEADERS ?? 'false') === 'true', logLevel: logLevelParsed.data, apiPrefix: '/api/v1', refreshCookieName: 'ibios_refresh',
-  allowedRoles: ['student', 'faculty', 'staff', 'admin', 'super_admin'] as const, allowedStatuses: ['Open', 'Under Discussion', 'Resolved', 'Closed'] as const,
+  accessTokenMinutes: tokenMinutes,
+  refreshTokenDays: refreshDays,
+  cookieSecure,
+  cookieSameSite: cookieSameSite === 'none' && !cookieSecure ? 'lax' as const : cookieSameSite,
+  corsOrigins,
+  allowedHosts,
+  upstashRedisRestUrl,
+  upstashRedisRestToken,
+  redisUrl,
+  trustProxy: (process.env.IBIOS_TRUST_PROXY_HEADERS ?? 'false') === 'true',
+  logLevel,
+  apiPrefix: '/api/v1',
+  refreshCookieName: 'ibios_refresh',
+  allowedRoles: ['student', 'faculty', 'staff', 'admin', 'super_admin'] as const,
+  allowedStatuses: ['Open', 'Under Discussion', 'Resolved', 'Closed'] as const,
   allowedPriorities: ['Low', 'Medium', 'High', 'Critical'] as const,
   allowedCategories: ['Academics', 'Facilities', 'IT & Internet', 'Student Services', 'Enrollment & Registrar', 'Safety & Security', 'Finance', 'Other'] as const,
 };
-if (!Number.isFinite(config.accessTokenMinutes) || config.accessTokenMinutes < 1 || config.accessTokenMinutes > 60) throw new Error('IBIOS_ACCESS_TOKEN_MINUTES must be between 1 and 60.');
-if (!Number.isFinite(config.refreshTokenDays) || config.refreshTokenDays < 1 || config.refreshTokenDays > 90) throw new Error('IBIOS_REFRESH_TOKEN_DAYS must be between 1 and 90.');
-if (config.cookieSameSite === 'none' && !config.cookieSecure) throw new Error('SameSite=None requires IBIOS_COOKIE_SECURE=true.');
-if (config.isProduction && !config.cookieSecure) throw new Error('Production requires IBIOS_COOKIE_SECURE=true.');
-if (config.isProduction && config.allowedHosts.some((host) => ['localhost', '127.0.0.1'].includes(host))) throw new Error('Production IBIOS_ALLOWED_HOSTS must not contain local development hostnames.');
-if (config.isProduction && config.corsOrigins.some((origin) => origin === '*' || origin.includes('localhost') || origin.includes('127.0.0.1'))) throw new Error('Production IBIOS_CORS_ORIGINS must use the deployed frontend origin and may not contain wildcards.');
-if (config.isProduction && config.allowedHosts.includes('*')) throw new Error('Production IBIOS_ALLOWED_HOSTS may not contain wildcard hosts.');
-if (!['lax', 'strict', 'none'].includes(config.cookieSameSite)) throw new Error('IBIOS_COOKIE_SAMESITE must be lax, strict, or none.');
-const hasUpstashRest = Boolean(config.upstashRedisRestUrl && config.upstashRedisRestToken);
-const hasNativeRedisUrl = /^rediss?:\/\//i.test(config.redisUrl);
-if (Boolean(config.upstashRedisRestUrl) !== Boolean(config.upstashRedisRestToken)) throw new Error('Set both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, or leave both unset.');
-if (config.upstashRedisRestUrl) { try { if (new URL(config.upstashRedisRestUrl).protocol !== 'https:') throw new Error('not https'); } catch { throw new Error('UPSTASH_REDIS_REST_URL must be a valid HTTPS URL.'); } }
-if (config.isProduction && !hasNativeRedisUrl && !hasUpstashRest) throw new Error('Production requires Redis-backed rate limiting. Set REDIS_URL or both Upstash REST credentials.');
