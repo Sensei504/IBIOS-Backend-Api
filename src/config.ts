@@ -98,7 +98,9 @@ if (!allowedHosts.length) {
 
 const databaseUrlFromEnv = process.env.DATABASE_URL?.trim() || process.env.IBIOS_DATABASE_URL?.trim() || '';
 if (isProduction && !databaseUrlFromEnv) startupConfigurationIssues.push('DATABASE_URL is not configured; database-backed API endpoints will return 503.');
-// Keep the Pool constructor valid even when production DATABASE_URL is missing.\n// Database-backed routes are gated by databaseConfigured and readiness reports 503.\nconst databaseUrl = databaseUrlFromEnv || 'postgresql://ibios:ibios-local-dev-postgres-password@127.0.0.1:5432/ibios';
+// Keep the Pool constructor valid even when production DATABASE_URL is missing.
+// Database-backed routes are gated by databaseConfigured and readiness reports 503.
+const databaseUrl = databaseUrlFromEnv || 'postgresql://ibios:ibios-local-dev-postgres-password@127.0.0.1:5432/ibios';
 const migrationDatabaseUrl = process.env.MIGRATIONS_DATABASE_URL?.trim() || '';
 
 const upstashRedisRestUrl = process.env.UPSTASH_REDIS_REST_URL?.trim() ?? '';
