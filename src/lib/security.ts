@@ -10,7 +10,7 @@ export type AuthRequest=FastifyRequest;
 declare module 'fastify'{interface FastifyRequest{user:PublicUser|null}}
 const signingKey=new TextEncoder().encode(config.secretKey);let dummyPasswordHashPromise:Promise<string>|undefined;const cookiePath=`${config.apiPrefix}/auth`;
 export async function hashPassword(password:string):Promise<string>{return argon2.hash(password,{type:argon2.argon2id,memoryCost:65_536,timeCost:3,parallelism:2});}
-export function needsPasswordRehash(hash:string):boolean{try{return argon2.needsRehash(hash,{memoryCost:65_536,timeCost:3,parallelism:2,type:argon2.argon2id});}catch{return false;}}
+export function needsPasswordRehash(hash:string):boolean{try{return argon2.needsRehash(hash,{memoryCost:65_536,timeCost:3,parallelism:2});}catch{return false;}}
 export async function verifyPassword(password:string,hash:string):Promise<boolean>{try{return await argon2.verify(hash,password);}catch{return false;}}
 export async function verifyPasswordOrDummy(password:string,hash?:string|null):Promise<boolean>{if(hash)return verifyPassword(password,hash);dummyPasswordHashPromise??=hashPassword(randomBytes(24).toString('hex'));return verifyPassword(password,await dummyPasswordHashPromise);}
 export function newRefreshToken():string{return randomBytes(48).toString('base64url');}export function hashToken(raw:string):string{return createHash('sha256').update(raw).digest('hex');}
