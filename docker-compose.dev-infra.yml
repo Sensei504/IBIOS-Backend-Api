@@ -1,0 +1,34 @@
+# Local development dependencies only. Run the API and frontend with their own npm scripts.
+name: ibios-dev-infra
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ibios
+      POSTGRES_USER: ibios
+      POSTGRES_PASSWORD: ${IBIOS_DEV_POSTGRES_PASSWORD:-ibios-local-dev-postgres-password}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["ibios_dev_postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ibios -d ibios"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: ${IBIOS_DEV_REDIS_PASSWORD:-ibios-local-dev-redis-password}
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["ibios_dev_redis_data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+volumes:
+  ibios_dev_postgres_data:
+  ibios_dev_redis_data:

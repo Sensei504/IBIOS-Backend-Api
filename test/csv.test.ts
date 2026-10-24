@@ -1,0 +1,3 @@
+import { describe, expect, it } from 'vitest';
+import { csvCell, parseCsv, toCsv } from '../src/lib/csv.js';
+describe('CSV helpers',()=>{it('parses quoted commas, embedded newlines and escaped quotes',()=>{expect(parseCsv('name,description\r\nAlex,"Wi-Fi, room 2"\r\nBea,"Line one\nLine ""two"""')).toEqual([['name','description'],['Alex','Wi-Fi, room 2'],['Bea','Line one\nLine "two"']]);});it('prevents spreadsheet formula cells',()=>{expect(csvCell('=1+1')).toBe("'=1+1");expect(csvCell('  @SUM(A1:A2)')).toBe("'  @SUM(A1:A2)");});it('quotes CSV delimiters and escapes quotes',()=>{expect(toCsv(['name'],[['Alex, "A"']])).toBe('name\r\n"Alex, ""A"""');});});

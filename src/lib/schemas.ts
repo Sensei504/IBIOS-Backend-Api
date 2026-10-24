@@ -1,0 +1,12 @@
+import { z } from 'zod';
+import { config } from '../config.js';
+const roles=z.enum(config.allowedRoles);const categories=z.enum(config.allowedCategories);const priorities=z.enum(config.allowedPriorities);const statuses=z.enum(config.allowedStatuses);
+const username=z.string().trim().min(3).max(32).regex(/^[a-zA-Z0-9._-]+$/).transform((value)=>value.toLowerCase());const email=z.string().trim().email().max(254).transform((value)=>value.toLowerCase());const fullName=z.string().trim().transform((value)=>value.replace(/\s+/g,' ')).pipe(z.string().min(2).max(100));
+export const loginSchema=z.object({username:z.string().trim().min(1).max(254),password:z.string().min(1).max(128)}).strict();
+export const passwordChangeSchema=z.object({current_password:z.string().min(1).max(128),new_password:z.string().min(12).max(128)}).strict();
+export const issueCreateSchema=z.object({title:z.string().trim().min(5).max(120),description:z.string().trim().min(10).max(10000),category:categories,priority:priorities.default('Medium')}).strict();
+export const issuePatchSchema=z.object({title:z.string().trim().min(5).max(120).optional(),description:z.string().trim().min(10).max(10000).optional(),category:categories.optional(),priority:priorities.optional()}).strict().refine((value)=>Object.keys(value).length>0,'At least one field must be supplied');
+export const statusSchema=z.object({status:statuses}).strict();export const positionSchema=z.object({text:z.string().trim().min(5).max(250)}).strict();export const argumentSchema=z.object({type:z.enum(['pro','con']),text:z.string().trim().min(3).max(200)}).strict();export const profileSchema=z.object({full_name:fullName,email}).strict();
+export const adminUserCreateSchema=z.object({username,email,full_name:fullName,role:z.enum(['student','faculty','staff','admin']),password:z.string().min(12).max(128),is_active:z.boolean().default(true)}).strict();
+export const adminUserPatchSchema=z.object({role:z.enum(['student','faculty','staff','admin']).optional(),is_active:z.boolean().optional(),full_name:fullName.optional()}).strict().refine((value)=>Object.keys(value).length>0,'At least one field must be supplied');
+export type AdminUserCreate=z.infer<typeof adminUserCreateSchema>;export type Role=z.infer<typeof roles>;

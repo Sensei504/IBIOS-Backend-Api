@@ -1,0 +1,9 @@
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { ZodError, type ZodTypeAny, z } from 'zod';
+export class HttpError extends Error { constructor(public statusCode:number,message:string,public headers?:Record<string,string>){super(message);this.name='HttpError';} }
+export function notFound(message='Not found'):never{throw new HttpError(404,message);}
+export function badRequest(message:string):never{throw new HttpError(400,message);}
+export function forbidden(message='You do not have permission to do that'):never{throw new HttpError(403,message);}
+export function conflict(message:string):never{throw new HttpError(409,message);}
+export function parseOrThrow<S extends ZodTypeAny>(schema:S,value:unknown):z.output<S>{try{return schema.parse(value);}catch(error){if(error instanceof ZodError)throw new HttpError(422,error.issues.map((issue)=>issue.message).join('; '));throw error;}}
+export function registerErrorHandler(app:FastifyInstance):void{app.setNotFoundHandler(async(request,reply)=>reply.code(404).send({detail:'Not found',request_id:request.id}));app.setErrorHandler(async(error,request:FastifyRequest,reply)=>{const known=error instanceof HttpError;const driverCode=(error as {code?:string}).code;const status=known?error.statusCode:(error as {statusCode?:number}).statusCode;const fallbackStatus=driverCode==='23505'||driverCode==='23503'?409:undefined;const safeStatus=fallbackStatus??(status&&status>=400&&status<600?status:500);if(safeStatus>=500)request.log.error({err:error,request_id:request.id},'Request failed');else request.log.info({statusCode:safeStatus,request_id:request.id},error.message);if(known&&error.headers)reply.headers(error.headers);const message=safeStatus===500?'Internal server error':fallbackStatus?'The request conflicts with an existing record or relationship':error.message;return reply.code(safeStatus).send({detail:message,request_id:request.id});});}

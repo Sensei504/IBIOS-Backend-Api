@@ -1,0 +1,18 @@
+# Secrets (keep .env.example versioned)
+.env
+.env.*
+!.env.example
+
+# Node / generated output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local artifacts
+*.log
+backups/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

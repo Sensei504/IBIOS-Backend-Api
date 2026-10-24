@@ -1,0 +1,29 @@
+{
+  "name": "ibios-mdc-backend",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/server.ts",
+    "start:prod": "node dist/server.js",
+    "start:watch": "tsx watch src/server.ts",
+    "migrate": "tsx src/migrate.ts",
+    "create-admin": "node dist/cli.js create-admin",
+    "create-admin:dev": "tsx src/cli.ts create-admin",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "bootstrap-super-admin": "node dist/cli.js bootstrap-super-admin",
+    "bootstrap-super-admin:dev": "tsx src/cli.ts bootstrap-super-admin"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2", "@fastify/cors": "^10.0.2", "@fastify/helmet": "^13.0.1", "@fastify/swagger": "^9.4.2", "@fastify/swagger-ui": "^5.2.2", "@upstash/redis": "^1.39.0", "argon2": "^0.41.1", "dotenv": "^16.4.7", "fastify": "^5.12.7", "ioredis": "^5.4.2", "jose": "^5.9.6", "pg": "^8.16.3", "zod": "^3.24.1", "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": { "@types/node": "^22.10.2", "@types/pg": "^8.23.1", "tsx": "^4.19.2", "typescript": "~5.7.2", "vitest": "^2.1.8", "drizzle-kit": "^0.31.11" }
+}
