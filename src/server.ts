@@ -37,5 +37,30 @@ export async function buildServer() {
  await registerAuthRoutes(app);await registerIssueRoutes(app);await registerCommunityRoutes(app);await registerConversationRoutes(app);await registerProfileRoutes(app);await registerAdminRoutes(app);registerErrorHandler(app);
  app.addHook('onClose',async()=>{await closeRateLimit();await closeDatabase();});return app;
 }
-const isMain=process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1];
-if(isMain){const app=await buildServer();const shutdown=async(signal:string)=>{app.log.info({signal},'Shutting down');await app.close();process.exit(0);};process.once('SIGINT',()=>{void shutdown('SIGINT');});process.once('SIGTERM',()=>{void shutdown('SIGTERM');});try{await app.listen({host:config.host,port:config.port});app.log.info({port:config.port},'IBIOS TypeScript API started');}catch(error){app.log.error(error);process.exitCode=1;await app.close();}}
+// Initialize one Fastify instance for both local execution and Vercel's serverless runtime.
+const app = await buildServer();
+await app.ready();
+
+// Export the underlying Node HTTP server. Vercel's function runtime rejects this
+// module when it has no default server/function export.
+export default app.server;
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  const port = Number(process.env.PORT || config.port);
+  const shutdown = async (signal: string) => {
+    app.log.info({ signal }, 'Shutting down');
+    await app.close();
+    process.exit(0);
+  };
+  process.once('SIGINT', () => { void shutdown('SIGINT'); });
+  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+  try {
+    await app.listen({ host: config.host, port });
+    app.log.info({ port }, 'IBIOS TypeScript API started');
+  } catch (error) {
+    app.log.error(error);
+    process.exitCode = 1;
+    await app.close();
+  }
+}
