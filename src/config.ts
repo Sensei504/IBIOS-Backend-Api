@@ -26,7 +26,7 @@ export const config = {
   accessTokenMinutes: Number(process.env.IBIOS_ACCESS_TOKEN_MINUTES ?? 15), refreshTokenDays: Number(process.env.IBIOS_REFRESH_TOKEN_DAYS ?? 14),
   cookieSecure: (process.env.IBIOS_COOKIE_SECURE ?? (environment === 'production' ? 'true' : 'false')) === 'true',
   cookieSameSite: (process.env.IBIOS_COOKIE_SAMESITE ?? 'lax') as 'lax' | 'strict' | 'none',
-  corsOrigins: parseStringArray(process.env.IBIOS_CORS_ORIGINS, ['http://localhost:8080', 'http://localhost:5173']),
+  corsOrigins: parseStringArray(process.env.IBIOS_CORS_ORIGINS, ['http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:5173']),
   allowedHosts: parseStringArray(process.env.IBIOS_ALLOWED_HOSTS, ['localhost', '127.0.0.1', 'web', 'api']),
   upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL?.trim() ?? '', upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ?? '',
   redisUrl: process.env.IBIOS_RATE_LIMIT_STORAGE_URI?.trim() || process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim() || '',
