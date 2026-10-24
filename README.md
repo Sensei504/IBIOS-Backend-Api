@@ -45,7 +45,7 @@ npm start
 ```
 
 - `npm run db:push` syncs the Drizzle schema to your configured development database.
-- `npm run bootstrap-super-admin:dev` prompts for and creates the **one and only** initial super administrator. It is allowed only when no user account exists. Do not run it after provisioning.
+- `npm run bootstrap-super-admin:dev` prompts for and creates the **one and only** super administrator, if one does not yet exist. Run it from a trusted operator shell, even if student/faculty self-registration has already begun. Do not expose the CLI or grant shell access to ordinary users.
 - `npm start` runs the Fastify TypeScript server directly; Docker is not required for the API process.
 - API base: `http://127.0.0.1:8000`; dev OpenAPI docs: `http://127.0.0.1:8000/docs`; liveness: `/health/live`; readiness: `/api/v1/health/ready`.
 
@@ -57,7 +57,7 @@ docker compose -f docker-compose.dev-infra.yml up -d
 
 ## Accounts and authorization
 
-Public registration is disabled. `POST /api/v1/auth/register` returns `403`. The bootstrap command is a one-time operation, guarded by a PostgreSQL partial unique index on the `super_admin` role. The super administrator can create multiple administrator accounts in the admin interface; ordinary admins can provision student, faculty, and staff accounts but cannot promote themselves or anyone else to admin.
+Public registration is enabled for student and faculty accounts only. `POST /api/v1/auth/register` validates the role server-side, rate-limits requests, hashes passwords with Argon2id, and starts a session after successful sign-up; unknown roles such as admin/super_admin are rejected. Faculty role claims are self-selected and are not independently verified by email or campus directory in this release. The super-admin bootstrap command is restricted to a trusted operator shell and can run only while no super-admin exists; a PostgreSQL partial unique index also enforces a single super-admin. The super administrator can create multiple administrator accounts in the admin interface; ordinary admins can provision student, faculty, and staff accounts but cannot promote themselves or anyone else to admin.
 
 ## Drizzle commands
 
